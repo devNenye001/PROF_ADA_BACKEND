@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Enums
+enum ProjectStatus {
+  IDEA
+  DRAFTING
+  REVIEWING
+  COMPLETED
+}
+
+enum SenderType {
+  USER
+  AI
+}
+
+enum FeedbackCategory {
+  GRAMMAR
+  RESEARCH_GAP
+  FORMATTING
+  CLARITY
+}
+
+enum FeedbackSeverity {
+  MINOR
+  MODERATE
+  CRITICAL
+}
+
+enum MessageRole {
+  student
+  prof
+}
+
+// 1. Users
+model User {
+  id         String    @id @default(uuid())
+  googleId   String    @unique
+  email      String    @unique
+  name       String
+  department String?
+  profileUrl String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  projects         Project[]
+  notifications    Notification[]
+  topicSuggestions TopicSuggestion[]
+  settings         Settings?
+  conversations    Conversation[]
+}
+
+// 2. Projects
+model Project {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      ProjectStatus @default(IDEA)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  documents          Document[]
+  slides             Slide[]
+  conversations      Conversation[]
+  defenseQuestions   DefenseQuestion[]
+  researchGapReviews ResearchGapReview[]
+}
+
+// 3. Documents
+model Document {
+  id            String    @id @default(uuid())
+  projectId     String
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title         String
+  chapterNumber Int?
+  fileUrl       String
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  feedback Feedback[]
+}
+
+// 4. Slides
+model Slide {
+  id        String    @id @default(uuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String
+  fileUrl   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  feedback Feedback[]
+}
+
+// 5. Conversations
+model Conversation {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String   @default("New Conversation")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  messages Message[]
+
+  projectId String?  @map("project_id")
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  topic     String?
+}
+
+// 6. Messages
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           MessageRole
+  content        String
+  hasAudio       Boolean      @default(false) @map("has_audio")
+  audioUrl       String?      @map("audio_url")
+  timestamp      DateTime     @default(now())
+}
+
+// 7. Feedback
+model Feedback {
+  id         String           @id @default(uuid())
+  documentId String?
+  document   Document?        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  slideId    String?
+  slide      Slide?           @relation(fields: [slideId], references: [id], onDelete: Cascade)
+  category   FeedbackCategory
+  content    String
+  severity   FeedbackSeverity
+  createdAt  DateTime         @default(now())
+}
+
+// 8. DefenseQuestions
+model DefenseQuestion {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  question        String
+  suggestedAnswer String?
+  difficultyLevel Int // 1-5
+  createdAt       DateTime @default(now())
+}
+
+// 9. ResearchGapReviews
+model ResearchGapReview {
+  id               String   @id @default(uuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  proposedTopic    String
+  identifiedGap    String
+  aiRecommendation String
+  createdAt        DateTime @default(now())
+}
+
+// 10. TopicSuggestions
+model TopicSuggestion {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  abstract      String
+  interestScore Int?
+  createdAt     DateTime @default(now())
+}
+
+// VoiceResponses is removed and replaced by inline message audio fields.
+
+// 12. Notifications
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  content   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// 13. Settings
+model Settings {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme       String   @default("system")
+  preferences Json     @default("{}")
+  updatedAt   DateTime @updatedAt
+}
