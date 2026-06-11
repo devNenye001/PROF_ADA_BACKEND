@@ -39,17 +39,17 @@ export const sendMagicLinkEmail = async (email: string, token: string): Promise<
   };
 
   try {
-    if (isSmtpConfigured || process.env.NODE_ENV === 'production') {
+    if (isSmtpConfigured) {
       const info = await transporter.sendMail(mailOptions);
       logger.info(`Magic link email sent to ${email}. Message ID: ${info.messageId}`);
     } else {
-      logger.info(`SMTP credentials not fully configured. Bypassing email transmission in development.`);
+      logger.info(`SMTP credentials not fully configured. Bypassing email transmission.`);
     }
   } catch (error) {
     logger.error('Error sending magic link email:', error);
-    // In local development, don't crash the API response if SMTP fails
-    if (process.env.NODE_ENV !== 'production') {
-      logger.info('SMTP transmission failed, but continuing in development mode. Use the link printed above.');
+    // In local development or if SMTP is not configured, don't crash the API response
+    if (process.env.NODE_ENV !== 'production' || !isSmtpConfigured) {
+      logger.info('SMTP transmission failed, but continuing. Use the link printed above.');
       return;
     }
     throw new Error('Failed to send magic link email');
