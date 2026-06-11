@@ -8,7 +8,22 @@ import { logger } from './config/logger';
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  'https://prof-adang.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173'
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
 app.use(express.json());
 
 // Routes

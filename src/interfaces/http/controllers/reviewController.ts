@@ -3,6 +3,7 @@ import { prisma } from '../../../infrastructure/database/prisma';
 import { logger } from '../../../config/logger';
 import { ReviewService } from '../../../application/reviewService';
 import { uploadBufferToCloudinary } from '../../../infrastructure/storage/cloudinary';
+import { extractTextFromBuffer } from '../../../utils/parser';
 
 export class ReviewController {
   static async uploadDocument(req: Request, res: Response): Promise<void> {
@@ -16,9 +17,20 @@ export class ReviewController {
         return;
       }
 
+      // 1. BOLA Check: Verify project ownership
       const project = await prisma.project.findFirst({ where: { id: projectId, userId, deletedAt: null } });
       if (!project) {
-        res.status(404).json({ success: false, error: 'Project not found' });
+        res.status(404).json({ success: false, error: 'Project not found or unauthorized' });
+        return;
+      }
+
+      // Extract text from document buffer
+      let extractedText = null;
+      try {
+        extractedText = await extractTextFromBuffer(req.file.buffer, req.file.originalname);
+      } catch (parseError) {
+        logger.error('Failed to parse text from file upload:', parseError);
+        res.status(422).json({ success: false, error: 'Could not extract readable text from this file' });
         return;
       }
 
@@ -30,17 +42,19 @@ export class ReviewController {
         savedRecord = await prisma.slide.create({
           data: {
             projectId,
-            title,
+            title: title || req.file.originalname,
             fileUrl: secureUrl,
+            extractedText,
           }
         });
       } else {
         savedRecord = await prisma.document.create({
           data: {
             projectId,
-            title,
+            title: title || req.file.originalname,
             chapterNumber: chapterNumber ? parseInt(chapterNumber, 10) : null,
             fileUrl: secureUrl,
+            extractedText,
           }
         });
       }
@@ -55,25 +69,51 @@ export class ReviewController {
   static async triggerReview(req: Request, res: Response): Promise<void> {
     try {
       const documentId = req.params.documentId as string;
-      const { type, documentText } = req.body; // type = 'CHAPTER' or 'SLIDE'
+      const { type } = req.body; // type = 'CHAPTER' or 'SLIDE'
+      const userId = (req as any).user.id;
 
-      if (!documentText) {
-        res.status(400).json({ success: false, error: 'Extracted documentText is required for AI review' });
+      let projectId;
+      let extractedText;
+
+      // 2. BOLA Check: Verify that the parent project belongs to the authenticated user
+      if (type === 'CHAPTER') {
+        const doc = await prisma.document.findUnique({ 
+          where: { id: documentId },
+          include: { project: true }
+        });
+        if (!doc || doc.project.deletedAt !== null) { 
+          res.status(404).json({ success: false, error: 'Document not found' }); 
+          return; 
+        }
+        if (doc.project.userId !== userId) {
+          res.status(403).json({ success: false, error: 'Unauthorized: You do not own this document' });
+          return;
+        }
+        projectId = doc.projectId;
+        extractedText = doc.extractedText;
+      } else {
+        const slide = await prisma.slide.findUnique({ 
+          where: { id: documentId },
+          include: { project: true }
+        });
+        if (!slide || slide.project.deletedAt !== null) { 
+          res.status(404).json({ success: false, error: 'Slide not found' }); 
+          return; 
+        }
+        if (slide.project.userId !== userId) {
+          res.status(403).json({ success: false, error: 'Unauthorized: You do not own this slide' });
+          return;
+        }
+        projectId = slide.projectId;
+        extractedText = slide.extractedText;
+      }
+
+      if (!extractedText || extractedText.trim().length === 0) {
+        res.status(400).json({ success: false, error: 'This file contains no extractable text. Please upload a valid document.' });
         return;
       }
 
-      let projectId;
-      if (type === 'CHAPTER') {
-        const doc = await prisma.document.findUnique({ where: { id: documentId } });
-        if (!doc) { res.status(404).json({ success: false, error: 'Document not found' }); return; }
-        projectId = doc.projectId;
-      } else {
-        const slide = await prisma.slide.findUnique({ where: { id: documentId } });
-        if (!slide) { res.status(404).json({ success: false, error: 'Slide not found' }); return; }
-        projectId = slide.projectId;
-      }
-
-      const reviewResult = await ReviewService.reviewDocument(projectId, documentId, documentText, type);
+      const reviewResult = await ReviewService.reviewDocument(projectId, documentId, extractedText, type);
 
       res.json({ success: true, data: reviewResult });
     } catch (error) {
@@ -85,6 +125,31 @@ export class ReviewController {
   static async getFeedback(req: Request, res: Response): Promise<void> {
     try {
       const documentId = req.params.documentId as string;
+      const userId = (req as any).user.id;
+
+      // 3. BOLA Check: Verify ownership of the referenced document or slide
+      let docOwnerId = null;
+
+      const doc = await prisma.document.findUnique({
+        where: { id: documentId },
+        include: { project: true }
+      });
+      if (doc) {
+        docOwnerId = doc.project.userId;
+      } else {
+        const slide = await prisma.slide.findUnique({
+          where: { id: documentId },
+          include: { project: true }
+        });
+        if (slide) {
+          docOwnerId = slide.project.userId;
+        }
+      }
+
+      if (!docOwnerId || docOwnerId !== userId) {
+        res.status(403).json({ success: false, error: 'Unauthorized to access feedback for this asset' });
+        return;
+      }
       
       const feedbacks = await prisma.feedback.findMany({
         where: {
@@ -102,4 +167,51 @@ export class ReviewController {
       res.status(500).json({ success: false, error: 'Failed to fetch feedback' });
     }
   }
+
+  static async getDocuments(req: Request, res: Response): Promise<void> {
+    try {
+      const projectId = req.params.projectId as string;
+      const userId = (req as any).user.id;
+
+      // BOLA check: Verify project belongs to user
+      const project = await prisma.project.findFirst({ where: { id: projectId, userId, deletedAt: null } });
+      if (!project) {
+        res.status(404).json({ success: false, error: 'Project not found or unauthorized' });
+        return;
+      }
+
+      const documents = await prisma.document.findMany({
+        where: { projectId, deletedAt: null },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json({ success: true, data: documents });
+    } catch (error) {
+      logger.error('Error fetching documents:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch documents' });
+    }
+  }
+
+  static async getSlides(req: Request, res: Response): Promise<void> {
+    try {
+      const projectId = req.params.projectId as string;
+      const userId = (req as any).user.id;
+
+      // BOLA check: Verify project belongs to user
+      const project = await prisma.project.findFirst({ where: { id: projectId, userId, deletedAt: null } });
+      if (!project) {
+        res.status(404).json({ success: false, error: 'Project not found or unauthorized' });
+        return;
+      }
+
+      const slides = await prisma.slide.findMany({
+        where: { projectId, deletedAt: null },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json({ success: true, data: slides });
+    } catch (error) {
+      logger.error('Error fetching slides:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch slides' });
+    }
+  }
 }
+

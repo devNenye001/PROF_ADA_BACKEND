@@ -12,4 +12,8 @@ router.post('/projects/:projectId/documents/upload', uploadMiddleware.single('fi
 router.post('/documents/:documentId/review', documentReviewRateLimiter, ReviewController.triggerReview);
 router.get('/documents/:documentId/feedback', ReviewController.getFeedback);
 
+// Retrieval endpoints for frontend file lists
+router.get('/projects/:projectId/documents', ReviewController.getDocuments);
+router.get('/projects/:projectId/slides', ReviewController.getSlides);
+
 export default router;

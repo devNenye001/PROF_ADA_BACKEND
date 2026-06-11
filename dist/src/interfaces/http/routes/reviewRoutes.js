@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const reviewController_1 = require("../controllers/reviewController");
+const authMiddleware_1 = require("../middlewares/authMiddleware");
+const rateLimiter_1 = require("../middlewares/rateLimiter");
+const uploadMiddleware_1 = require("../middlewares/uploadMiddleware");
+const router = (0, express_1.Router)();
+router.use(authMiddleware_1.authMiddleware);
+router.post('/projects/:projectId/documents/upload', uploadMiddleware_1.uploadMiddleware.single('file'), reviewController_1.ReviewController.uploadDocument);
+router.post('/documents/:documentId/review', rateLimiter_1.documentReviewRateLimiter, reviewController_1.ReviewController.triggerReview);
+router.get('/documents/:documentId/feedback', reviewController_1.ReviewController.getFeedback);
+// Retrieval endpoints for frontend file lists
+router.get('/projects/:projectId/documents', reviewController_1.ReviewController.getDocuments);
+router.get('/projects/:projectId/slides', reviewController_1.ReviewController.getSlides);
+exports.default = router;
