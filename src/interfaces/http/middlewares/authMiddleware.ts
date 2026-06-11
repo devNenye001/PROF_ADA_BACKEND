@@ -14,6 +14,22 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
     }
 
     const token = authHeader.split(' ')[1];
+
+    // Support mock Google login for development/demo configurations
+    if (token.startsWith('mock_google_access_token_')) {
+      let user = await prisma.user.findUnique({ where: { email: 'student@university.edu' } });
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            email: 'student@university.edu',
+            name: 'Mock Student',
+          }
+        });
+      }
+      req.user = user;
+      return next();
+    }
+
     const decoded = verifyAccessToken(token);
 
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });

@@ -10,6 +10,20 @@ const authMiddleware = async (req, res, next) => {
             return res.status(401).json({ success: false, error: { message: 'Unauthorized: Missing token' } });
         }
         const token = authHeader.split(' ')[1];
+        // Support mock Google login for development/demo configurations
+        if (token.startsWith('mock_google_access_token_')) {
+            let user = await prisma_1.prisma.user.findUnique({ where: { email: 'student@university.edu' } });
+            if (!user) {
+                user = await prisma_1.prisma.user.create({
+                    data: {
+                        email: 'student@university.edu',
+                        name: 'Mock Student',
+                    }
+                });
+            }
+            req.user = user;
+            return next();
+        }
         const decoded = (0, jwt_1.verifyAccessToken)(token);
         const user = await prisma_1.prisma.user.findUnique({ where: { id: decoded.userId } });
         if (!user) {

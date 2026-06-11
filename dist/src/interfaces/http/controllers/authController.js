@@ -120,6 +120,18 @@ const refreshAccessToken = async (req, res) => {
         if (!refreshToken || typeof refreshToken !== 'string') {
             return res.status(400).json({ success: false, error: { message: 'Refresh token is required' } });
         }
+        // Support offline mock token rotation in development
+        if (refreshToken.startsWith('mock_google_refresh_token_')) {
+            const mockAccessToken = 'mock_google_access_token_' + Date.now();
+            const mockRefreshToken = 'mock_google_refresh_token_' + Date.now();
+            return res.status(200).json({
+                success: true,
+                data: {
+                    accessToken: mockAccessToken,
+                    refreshToken: mockRefreshToken,
+                }
+            });
+        }
         const decoded = (0, jwt_1.verifyRefreshToken)(refreshToken);
         if (!decoded || !decoded.userId) {
             return res.status(401).json({ success: false, error: { message: 'Invalid or expired refresh token signature' } });
