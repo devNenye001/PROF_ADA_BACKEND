@@ -17,6 +17,9 @@ const transporter = nodemailer_1.default.createTransport({
 });
 const sendMagicLinkEmail = async (email, token) => {
     const verifyUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/verify?token=${token}`;
+    // Log the magic link to the console for easy local development access
+    logger_1.logger.info(`\n==================================================\n[MAGIC LINK] Verification URL for ${email}:\n${verifyUrl}\n==================================================\n`);
+    const isSmtpConfigured = !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
     const mailOptions = {
         from: `"Prof. Ada" <${process.env.SMTP_FROM || 'noreply@gouniversity.edu.ng'}>`,
         to: email,
@@ -36,11 +39,21 @@ const sendMagicLinkEmail = async (email, token) => {
     `,
     };
     try {
-        const info = await transporter.sendMail(mailOptions);
-        logger_1.logger.info(`Magic link email sent to ${email}. Message ID: ${info.messageId}`);
+        if (isSmtpConfigured || process.env.NODE_ENV === 'production') {
+            const info = await transporter.sendMail(mailOptions);
+            logger_1.logger.info(`Magic link email sent to ${email}. Message ID: ${info.messageId}`);
+        }
+        else {
+            logger_1.logger.info(`SMTP credentials not fully configured. Bypassing email transmission in development.`);
+        }
     }
     catch (error) {
         logger_1.logger.error('Error sending magic link email:', error);
+        // In local development, don't crash the API response if SMTP fails
+        if (process.env.NODE_ENV !== 'production') {
+            logger_1.logger.info('SMTP transmission failed, but continuing in development mode. Use the link printed above.');
+            return;
+        }
         throw new Error('Failed to send magic link email');
     }
 };
