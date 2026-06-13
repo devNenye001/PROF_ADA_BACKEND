@@ -59,6 +59,57 @@ export const googleLogin = async (req: Request, res: Response): Promise<any> => 
   }
 };
 
+export const googleLoginRedirect = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { credential } = req.body;
+    const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    if (!credential) {
+      return res.redirect(`${FRONTEND_URL}/?error=Missing_Credential`);
+    }
+
+    const payload = await verifyGoogleToken(credential);
+    if (!payload) {
+      return res.redirect(`${FRONTEND_URL}/?error=Invalid_Token`);
+    }
+
+    const { email, name, picture, sub: googleId } = payload;
+    
+    if (!email || !name || !googleId) {
+      return res.redirect(`${FRONTEND_URL}/?error=Incomplete_Profile`);
+    }
+
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: { email, name, profileUrl: picture, googleId },
+      });
+    } else if (!user.googleId) {
+      user = await prisma.user.update({
+        where: { email },
+        data: { googleId, profileUrl: picture },
+      });
+    }
+
+    const tokens = generateTokens(user.id);
+    
+    await prisma.refreshToken.create({
+      data: {
+        token: tokens.refreshToken,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      }
+    });
+    
+    return res.redirect(`${FRONTEND_URL}/?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}&email=${encodeURIComponent(email)}`);
+  } catch (error) {
+    console.error(error);
+    const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return res.redirect(`${FRONTEND_URL}/?error=Server_Error`);
+  }
+};
+
 export const requestMagicLink = async (req: Request, res: Response): Promise<any> => {
   try {
     const { email } = req.body;
