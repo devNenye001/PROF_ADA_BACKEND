@@ -8,6 +8,7 @@ import {
 } from '../../../utils/jwt';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { sendMagicLinkEmail } from '../../../config/email';
+import { supabase } from '../../../utils/supabase';
 
 export const googleLogin = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -55,6 +56,55 @@ export const googleLogin = async (req: Request, res: Response): Promise<any> => 
     res.status(200).json({ success: true, data: { user, ...tokens } });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ success: false, error: { message: 'Internal Server Error' } });
+  }
+};
+
+export const supabaseLogin = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { access_token } = req.body;
+    if (!access_token) {
+      return res.status(400).json({ success: false, error: { message: 'Supabase access_token is required' } });
+    }
+
+    // Verify token with Supabase and get user details
+    const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(access_token);
+    
+    if (error || !supabaseUser || !supabaseUser.email) {
+      return res.status(401).json({ success: false, error: { message: 'Invalid Supabase token' } });
+    }
+
+    const email = supabaseUser.email;
+    const name = supabaseUser.user_metadata?.full_name || email.split('@')[0];
+    const picture = supabaseUser.user_metadata?.avatar_url || null;
+
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: { email, name, profileUrl: picture },
+      });
+    } else if (!user.profileUrl && picture) {
+      user = await prisma.user.update({
+        where: { email },
+        data: { profileUrl: picture },
+      });
+    }
+
+    const tokens = generateTokens(user.id);
+    
+    // Save refresh token
+    await prisma.refreshToken.create({
+      data: {
+        token: tokens.refreshToken,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      }
+    });
+    
+    res.status(200).json({ success: true, data: { user, ...tokens } });
+  } catch (error) {
+    console.error('Supabase login sync error:', error);
     res.status(500).json({ success: false, error: { message: 'Internal Server Error' } });
   }
 };
