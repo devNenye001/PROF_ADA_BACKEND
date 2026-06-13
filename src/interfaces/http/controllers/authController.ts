@@ -168,17 +168,12 @@ export const verifyMagicLink = async (req: Request, res: Response): Promise<any>
       }
     });
 
-    res.status(200).json({
-      success: true,
-      data: {
-        user,
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-      }
-    });
+    const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return res.redirect(`${FRONTEND_URL}/?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}&email=${encodeURIComponent(user.email)}`);
   } catch (error) {
     console.error('Magic link verification error:', error);
-    res.status(500).json({ success: false, error: { message: 'Internal Server Error during verification' } });
+    const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return res.redirect(`${FRONTEND_URL}/?error=Invalid_Or_Expired_Link`);
   }
 };
 
