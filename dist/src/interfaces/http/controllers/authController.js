@@ -1,10 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.refreshAccessToken = exports.verifyMagicLink = exports.requestMagicLink = exports.googleLogin = void 0;
+exports.refreshAccessToken = exports.verifyMagicLink = exports.requestMagicLink = exports.googleLoginRedirect = exports.supabaseLogin = exports.googleLogin = void 0;
 const googleAuth_1 = require("../../../infrastructure/auth/googleAuth");
 const jwt_1 = require("../../../utils/jwt");
 const prisma_1 = require("../../../infrastructure/database/prisma");
 const email_1 = require("../../../config/email");
+const supabase_1 = require("../../../utils/supabase");
 const googleLogin = async (req, res) => {
     try {
         const { idToken } = req.body;
@@ -49,6 +50,93 @@ const googleLogin = async (req, res) => {
     }
 };
 exports.googleLogin = googleLogin;
+const supabaseLogin = async (req, res) => {
+    try {
+        const { access_token } = req.body;
+        if (!access_token) {
+            return res.status(400).json({ success: false, error: { message: 'Supabase access_token is required' } });
+        }
+        // Verify token with Supabase and get user details
+        const { data: { user: supabaseUser }, error } = await supabase_1.supabase.auth.getUser(access_token);
+        if (error || !supabaseUser || !supabaseUser.email) {
+            return res.status(401).json({ success: false, error: { message: 'Invalid Supabase token' } });
+        }
+        const email = supabaseUser.email;
+        const name = supabaseUser.user_metadata?.full_name || email.split('@')[0];
+        const picture = supabaseUser.user_metadata?.avatar_url || null;
+        let user = await prisma_1.prisma.user.findUnique({ where: { email } });
+        if (!user) {
+            user = await prisma_1.prisma.user.create({
+                data: { email, name, profileUrl: picture },
+            });
+        }
+        else if (!user.profileUrl && picture) {
+            user = await prisma_1.prisma.user.update({
+                where: { email },
+                data: { profileUrl: picture },
+            });
+        }
+        const tokens = (0, jwt_1.generateTokens)(user.id);
+        // Save refresh token
+        await prisma_1.prisma.refreshToken.create({
+            data: {
+                token: tokens.refreshToken,
+                userId: user.id,
+                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+            }
+        });
+        res.status(200).json({ success: true, data: { user, ...tokens } });
+    }
+    catch (error) {
+        console.error('Supabase login sync error:', error);
+        res.status(500).json({ success: false, error: { message: 'Internal Server Error' } });
+    }
+};
+exports.supabaseLogin = supabaseLogin;
+const googleLoginRedirect = async (req, res) => {
+    try {
+        const { credential } = req.body;
+        const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+        if (!credential) {
+            return res.redirect(`${FRONTEND_URL}/?error=Missing_Credential`);
+        }
+        const payload = await (0, googleAuth_1.verifyGoogleToken)(credential);
+        if (!payload) {
+            return res.redirect(`${FRONTEND_URL}/?error=Invalid_Token`);
+        }
+        const { email, name, picture, sub: googleId } = payload;
+        if (!email || !name || !googleId) {
+            return res.redirect(`${FRONTEND_URL}/?error=Incomplete_Profile`);
+        }
+        let user = await prisma_1.prisma.user.findUnique({ where: { email } });
+        if (!user) {
+            user = await prisma_1.prisma.user.create({
+                data: { email, name, profileUrl: picture, googleId },
+            });
+        }
+        else if (!user.googleId) {
+            user = await prisma_1.prisma.user.update({
+                where: { email },
+                data: { googleId, profileUrl: picture },
+            });
+        }
+        const tokens = (0, jwt_1.generateTokens)(user.id);
+        await prisma_1.prisma.refreshToken.create({
+            data: {
+                token: tokens.refreshToken,
+                userId: user.id,
+                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+            }
+        });
+        return res.redirect(`${FRONTEND_URL}/?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}&email=${encodeURIComponent(email)}`);
+    }
+    catch (error) {
+        console.error(error);
+        const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+        return res.redirect(`${FRONTEND_URL}/?error=Server_Error`);
+    }
+};
+exports.googleLoginRedirect = googleLoginRedirect;
 const requestMagicLink = async (req, res) => {
     try {
         const { email } = req.body;
@@ -99,18 +187,13 @@ const verifyMagicLink = async (req, res) => {
                 expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
             }
         });
-        res.status(200).json({
-            success: true,
-            data: {
-                user,
-                accessToken: tokens.accessToken,
-                refreshToken: tokens.refreshToken,
-            }
-        });
+        const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+        return res.redirect(`${FRONTEND_URL}/?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}&email=${encodeURIComponent(user.email)}`);
     }
     catch (error) {
         console.error('Magic link verification error:', error);
-        res.status(500).json({ success: false, error: { message: 'Internal Server Error during verification' } });
+        const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+        return res.redirect(`${FRONTEND_URL}/?error=Invalid_Or_Expired_Link`);
     }
 };
 exports.verifyMagicLink = verifyMagicLink;

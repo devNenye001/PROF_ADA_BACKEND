@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.authMiddleware = void 0;
-const jwt_1 = require("../../../utils/jwt");
 const prisma_1 = require("../../../infrastructure/database/prisma");
+const supabase_1 = require("../../../utils/supabase");
 const authMiddleware = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
@@ -10,29 +10,28 @@ const authMiddleware = async (req, res, next) => {
             return res.status(401).json({ success: false, error: { message: 'Unauthorized: Missing token' } });
         }
         const token = authHeader.split(' ')[1];
-        // Support mock Google login for development/demo configurations
-        if (token.startsWith('mock_google_access_token_')) {
-            let user = await prisma_1.prisma.user.findUnique({ where: { email: 'student@university.edu' } });
-            if (!user) {
-                user = await prisma_1.prisma.user.create({
-                    data: {
-                        email: 'student@university.edu',
-                        name: 'Mock Student',
-                    }
-                });
-            }
-            req.user = user;
-            return next();
+        // Verify token directly with Supabase
+        const { data: { user: supabaseUser }, error } = await supabase_1.supabase.auth.getUser(token);
+        if (error || !supabaseUser || !supabaseUser.email) {
+            return res.status(401).json({ success: false, error: { message: 'Unauthorized: Invalid Supabase token' } });
         }
-        const decoded = (0, jwt_1.verifyAccessToken)(token);
-        const user = await prisma_1.prisma.user.findUnique({ where: { id: decoded.userId } });
+        // Sync with local Prisma database so we have the internal user ID
+        let user = await prisma_1.prisma.user.findUnique({ where: { email: supabaseUser.email } });
         if (!user) {
-            return res.status(401).json({ success: false, error: { message: 'Unauthorized: User not found' } });
+            // Auto-create user if they don't exist locally
+            user = await prisma_1.prisma.user.create({
+                data: {
+                    email: supabaseUser.email,
+                    name: supabaseUser.user_metadata?.full_name || supabaseUser.email.split('@')[0],
+                    profileUrl: supabaseUser.user_metadata?.avatar_url || null
+                }
+            });
         }
         req.user = user;
         next();
     }
     catch (error) {
+        console.error('Auth middleware error:', error);
         return res.status(401).json({ success: false, error: { message: 'Unauthorized: Invalid token' } });
     }
 };

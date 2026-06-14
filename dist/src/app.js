@@ -5,7 +5,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
-const authRoutes_1 = __importDefault(require("./interfaces/http/routes/authRoutes"));
 const projectRoutes_1 = __importDefault(require("./interfaces/http/routes/projectRoutes"));
 const chatRoutes_1 = __importDefault(require("./interfaces/http/routes/chatRoutes"));
 const reviewRoutes_1 = __importDefault(require("./interfaces/http/routes/reviewRoutes"));
@@ -28,8 +27,8 @@ app.use((0, cors_1.default)({
     credentials: true
 }));
 app.use(express_1.default.json());
+app.use(express_1.default.urlencoded({ extended: true }));
 // Routes
-app.use('/api/auth', authRoutes_1.default);
 app.use('/api/projects', projectRoutes_1.default);
 app.use('/api', chatRoutes_1.default); // contains /projects/:id/conversations & /conversations/:id/chat
 app.use('/api', reviewRoutes_1.default); // contains /projects/:id/documents/upload & /documents/:id/review

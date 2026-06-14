@@ -1,6 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import authRoutes from './interfaces/http/routes/authRoutes';
 import projectRoutes from './interfaces/http/routes/projectRoutes';
 import chatRoutes from './interfaces/http/routes/chatRoutes';
 import reviewRoutes from './interfaces/http/routes/reviewRoutes';
@@ -28,7 +27,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api', chatRoutes); // contains /projects/:id/conversations & /conversations/:id/chat
 app.use('/api', reviewRoutes); // contains /projects/:id/documents/upload & /documents/:id/review

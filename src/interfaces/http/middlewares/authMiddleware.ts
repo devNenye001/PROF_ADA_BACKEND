@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken } from '../../../utils/jwt';
 import { prisma } from '../../../infrastructure/database/prisma';
+import { supabase } from '../../../utils/supabase';
 
 export interface AuthRequest extends Request {
   user?: any;
@@ -15,31 +15,31 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
 
     const token = authHeader.split(' ')[1];
 
-    // Support mock Google login for development/demo configurations
-    if (token.startsWith('mock_google_access_token_')) {
-      let user = await prisma.user.findUnique({ where: { email: 'student@university.edu' } });
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            email: 'student@university.edu',
-            name: 'Mock Student',
-          }
-        });
-      }
-      req.user = user;
-      return next();
+    // Verify token directly with Supabase
+    const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
+    
+    if (error || !supabaseUser || !supabaseUser.email) {
+      return res.status(401).json({ success: false, error: { message: 'Unauthorized: Invalid Supabase token' } });
     }
 
-    const decoded = verifyAccessToken(token);
-
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    // Sync with local Prisma database so we have the internal user ID
+    let user = await prisma.user.findUnique({ where: { email: supabaseUser.email } });
+    
     if (!user) {
-      return res.status(401).json({ success: false, error: { message: 'Unauthorized: User not found' } });
+      // Auto-create user if they don't exist locally
+      user = await prisma.user.create({ 
+        data: { 
+          email: supabaseUser.email, 
+          name: supabaseUser.user_metadata?.full_name || supabaseUser.email.split('@')[0],
+          profileUrl: supabaseUser.user_metadata?.avatar_url || null
+        } 
+      });
     }
 
     req.user = user;
     next();
   } catch (error) {
+    console.error('Auth middleware error:', error);
     return res.status(401).json({ success: false, error: { message: 'Unauthorized: Invalid token' } });
   }
 };
