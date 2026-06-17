@@ -56,6 +56,7 @@ model User {
   settings         Settings?
   conversations    Conversation[]
   refreshTokens    RefreshToken[]
+  userFeedback     UserFeedback[]
 }
 
 // 2. Projects
@@ -214,4 +215,34 @@ model RefreshToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+// 15. UserFeedback (Contextual Feature Feedback)
+model UserFeedback {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  featureType String   @map("feature_type")
+  rating      String   // 👍 or 👎
+  reason      String?
+  message     String?
+  device      String?
+  theme       String?
+  version     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("user_feedback")
+}
+
+// 16. ContactMessage (Landing Page Support/Contact)
+model ContactMessage {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  category  String
+  message   String
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("contact_messages")
 }

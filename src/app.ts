@@ -3,6 +3,8 @@ import cors from 'cors';
 import projectRoutes from './interfaces/http/routes/projectRoutes';
 import chatRoutes from './interfaces/http/routes/chatRoutes';
 import reviewRoutes from './interfaces/http/routes/reviewRoutes';
+import feedbackRoutes from './interfaces/http/routes/feedbackRoutes';
+import contactRoutes from './interfaces/http/routes/contactRoutes';
 import { logger } from './config/logger';
 
 const app = express();
@@ -28,6 +30,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/projects', projectRoutes);
+app.use('/api/feedback', feedbackRoutes);
+app.use('/api/contact', contactRoutes);
 app.use('/api', chatRoutes); // contains /projects/:id/conversations & /conversations/:id/chat
 app.use('/api', reviewRoutes); // contains /projects/:id/documents/upload & /documents/:id/review
 

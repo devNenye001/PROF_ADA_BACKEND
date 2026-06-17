@@ -8,6 +8,8 @@ const cors_1 = __importDefault(require("cors"));
 const projectRoutes_1 = __importDefault(require("./interfaces/http/routes/projectRoutes"));
 const chatRoutes_1 = __importDefault(require("./interfaces/http/routes/chatRoutes"));
 const reviewRoutes_1 = __importDefault(require("./interfaces/http/routes/reviewRoutes"));
+const feedbackRoutes_1 = __importDefault(require("./interfaces/http/routes/feedbackRoutes"));
+const contactRoutes_1 = __importDefault(require("./interfaces/http/routes/contactRoutes"));
 const logger_1 = require("./config/logger");
 const app = (0, express_1.default)();
 const allowedOrigins = [
@@ -30,6 +32,8 @@ app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
 // Routes
 app.use('/api/projects', projectRoutes_1.default);
+app.use('/api/feedback', feedbackRoutes_1.default);
+app.use('/api/contact', contactRoutes_1.default);
 app.use('/api', chatRoutes_1.default); // contains /projects/:id/conversations & /conversations/:id/chat
 app.use('/api', reviewRoutes_1.default); // contains /projects/:id/documents/upload & /documents/:id/review
 // Health Check
