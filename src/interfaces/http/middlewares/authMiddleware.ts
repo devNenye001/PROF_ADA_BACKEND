@@ -40,6 +40,6 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
-    return res.status(401).json({ success: false, error: { message: 'Unauthorized: Invalid token' } });
+    return res.status(500).json({ success: false, error: { message: 'Internal Server Error during authentication' } });
   }
 };
