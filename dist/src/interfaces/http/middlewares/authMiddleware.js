@@ -13,10 +13,13 @@ const authMiddleware = async (req, res, next) => {
         // Verify token directly with Supabase
         const { data: { user: supabaseUser }, error } = await supabase_1.supabase.auth.getUser(token);
         console.log("Supabase getUser error:", error);
-        console.log("Supabase User:", supabaseUser ? { id: supabaseUser.id, email: supabaseUser.email } : null);
+        if (supabaseUser)
+            console.log("TOKEN_VERIFIED for:", supabaseUser.email);
         if (error || !supabaseUser || !supabaseUser.email) {
             return res.status(401).json({ success: false, error: { message: 'Unauthorized: Invalid Supabase token', details: error } });
         }
+        console.log("USER_FOUND in Supabase:", supabaseUser.email);
+        console.log("SESSION_VALID");
         // Sync with local Prisma database so we have the internal user ID
         let user = await prisma_1.prisma.user.findUnique({ where: { email: supabaseUser.email } });
         if (!user) {
