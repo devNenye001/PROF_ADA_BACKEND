@@ -12,8 +12,10 @@ const authMiddleware = async (req, res, next) => {
         const token = authHeader.split(' ')[1];
         // Verify token directly with Supabase
         const { data: { user: supabaseUser }, error } = await supabase_1.supabase.auth.getUser(token);
+        console.log("Supabase getUser error:", error);
+        console.log("Supabase User:", supabaseUser ? { id: supabaseUser.id, email: supabaseUser.email } : null);
         if (error || !supabaseUser || !supabaseUser.email) {
-            return res.status(401).json({ success: false, error: { message: 'Unauthorized: Invalid Supabase token' } });
+            return res.status(401).json({ success: false, error: { message: 'Unauthorized: Invalid Supabase token', details: error } });
         }
         // Sync with local Prisma database so we have the internal user ID
         let user = await prisma_1.prisma.user.findUnique({ where: { email: supabaseUser.email } });
@@ -32,7 +34,7 @@ const authMiddleware = async (req, res, next) => {
     }
     catch (error) {
         console.error('Auth middleware error:', error);
-        return res.status(401).json({ success: false, error: { message: 'Unauthorized: Invalid token' } });
+        return res.status(500).json({ success: false, error: { message: 'Internal Server Error during authentication' } });
     }
 };
 exports.authMiddleware = authMiddleware;
